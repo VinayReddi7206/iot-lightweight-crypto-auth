@@ -1,2 +1,4 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+docs/index.html linguist-vendored
+web-demo/app/static/index.html linguist-vendored
