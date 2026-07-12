@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.pyc
+venv/
+.venv/
+
+# MATLAB generated data files (created when scripts run)
+matlab/*.asv
+matlab/slprj/
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store

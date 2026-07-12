@@ -1,0 +1,259 @@
+<!--
+  SecureShare - lock a message with a secret key; only the exact key unlocks it.
+  Real cryptography via the browser's Web Crypto API: PBKDF2 (key from passphrase)
+  + AES-256-GCM (authenticated encryption). Wrong key -> decryption fails, message
+  stays locked. Self-contained; nothing is sent anywhere.
+-->
+<title>SecureShare — Lock a message with a secret key</title>
+<style>
+  :root{
+    --bg:#f4f5fb; --card:#ffffff; --ink:#1a1d29; --muted:#6b7180; --line:#e5e7ef;
+    --accent:#6d5efc; --accent-dk:#5a4be0; --accent-soft:#efecff;
+    --ok:#0ca678; --ok-soft:#e6f7f1; --err:#e03131; --err-soft:#fdecec;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --shadow:0 1px 3px rgba(30,25,80,.06),0 10px 30px rgba(30,25,80,.08);
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#0f1117; --card:#171a23; --ink:#eceef5; --muted:#9aa1b3; --line:#262a36;
+      --accent:#8b7dff; --accent-dk:#7a6bff; --accent-soft:#20213a;
+      --ok:#2dd4a8; --ok-soft:#12271f; --err:#ff6b6b; --err-soft:#2a1518;
+      --shadow:0 1px 3px rgba(0,0,0,.3),0 12px 34px rgba(0,0,0,.4);
+    }
+  }
+  :root[data-theme="dark"]{--bg:#0f1117;--card:#171a23;--ink:#eceef5;--muted:#9aa1b3;--line:#262a36;--accent:#8b7dff;--accent-dk:#7a6bff;--accent-soft:#20213a;--ok:#2dd4a8;--ok-soft:#12271f;--err:#ff6b6b;--err-soft:#2a1518;}
+  :root[data-theme="light"]{--bg:#f4f5fb;--card:#fff;--ink:#1a1d29;--muted:#6b7180;--line:#e5e7ef;--accent:#6d5efc;--accent-dk:#5a4be0;--accent-soft:#efecff;--ok:#0ca678;--ok-soft:#e6f7f1;--err:#e03131;--err-soft:#fdecec;}
+
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;line-height:1.55;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:600px;margin:0 auto;padding:38px 20px 60px;}
+  button{font-family:inherit;cursor:pointer;border:none;}
+
+  header{text-align:center;margin-bottom:24px;}
+  .badge{font-size:34px;}
+  h1{font-size:25px;margin:8px 0 6px;font-weight:800;letter-spacing:-.02em;}
+  h1 span{color:var(--accent);}
+  .sub{color:var(--muted);font-size:14.5px;max-width:44ch;margin:0 auto;}
+
+  .tabs{display:flex;gap:6px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:5px;margin-bottom:18px;box-shadow:var(--shadow);}
+  .tab{flex:1;text-align:center;padding:11px;border-radius:10px;font-weight:700;font-size:14.5px;color:var(--muted);background:transparent;transition:.15s;}
+  .tab.active{background:var(--accent);color:#fff;}
+
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:22px;box-shadow:var(--shadow);}
+  .card.hidden{display:none;}
+  label{display:block;font-size:13px;font-weight:700;margin:0 0 7px;color:var(--ink);}
+  textarea,input[type=text],input[type=password]{
+    width:100%;font:inherit;font-size:15px;background:var(--bg);color:var(--ink);
+    border:1.5px solid var(--line);border-radius:11px;padding:12px 13px;resize:vertical;
+  }
+  textarea:focus,input:focus{outline:2px solid var(--accent);outline-offset:0;border-color:var(--accent);}
+  .keyrow{position:relative;margin-bottom:4px;}
+  .keyrow input{padding-right:44px;}
+  .eye{position:absolute;right:8px;top:50%;transform:translateY(-50%);background:transparent;color:var(--muted);font-size:16px;padding:6px;}
+  .hint{font-size:12px;color:var(--muted);margin:6px 0 16px;}
+  .btn{width:100%;background:var(--accent);color:#fff;font-weight:800;font-size:15.5px;padding:13px;border-radius:12px;transition:.15s;display:flex;align-items:center;justify-content:center;gap:8px;}
+  .btn:hover{background:var(--accent-dk);}
+  .btn:disabled{opacity:.5;cursor:not-allowed;}
+  .field{margin-bottom:16px;}
+
+  .result{margin-top:18px;border-radius:12px;padding:15px 16px;font-size:14px;display:none;}
+  .result.show{display:block;animation:pop .2s ease;}
+  @keyframes pop{from{transform:scale(.98);opacity:0;}to{transform:none;opacity:1;}}
+  .result .rlabel{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;display:flex;align-items:center;gap:6px;}
+  .result.code{background:var(--accent-soft);border:1px solid color-mix(in srgb,var(--accent) 30%,transparent);}
+  .result.code .rlabel{color:var(--accent);}
+  .codebox{font-family:var(--mono);font-size:12.5px;word-break:break-all;background:var(--card);border:1px solid var(--line);border-radius:9px;padding:11px;max-height:120px;overflow:auto;color:var(--ink);}
+  .copybtn{margin-top:10px;width:100%;background:var(--ink);color:var(--card);font-weight:700;font-size:13.5px;padding:10px;border-radius:9px;}
+  .result.ok{background:var(--ok-soft);border:1px solid color-mix(in srgb,var(--ok) 35%,transparent);}
+  .result.ok .rlabel{color:var(--ok);}
+  .result.ok .msg{font-size:16px;font-weight:600;color:var(--ink);word-break:break-word;white-space:pre-wrap;}
+  .result.err{background:var(--err-soft);border:1px solid color-mix(in srgb,var(--err) 35%,transparent);}
+  .result.err .rlabel{color:var(--err);}
+  .result.err .msg{color:var(--err);font-weight:700;font-size:14.5px;}
+
+  .toggle{display:none;width:100%;margin-top:12px;background:transparent;color:var(--accent);border:1.5px solid color-mix(in srgb,var(--accent) 40%,var(--line));font-weight:700;font-size:13.5px;padding:11px;border-radius:11px;transition:.15s;}
+  .toggle.show{display:block;}
+  .toggle:hover{background:var(--accent-soft);}
+  .details{display:none;margin-top:12px;background:var(--bg);border:1px dashed var(--line);border-radius:12px;padding:14px 15px;}
+  .details.show{display:block;}
+  .dhead{font-size:12.5px;font-weight:800;margin-bottom:11px;}
+  .dhead span{color:var(--muted);font-weight:600;}
+  .drow{margin-bottom:10px;}
+  .dk{display:block;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:3px;}
+  .dv{font-size:13.5px;word-break:break-word;}
+  .dv.mono{font-family:var(--mono);font-size:11.5px;line-height:1.7;display:block;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:9px;max-height:110px;overflow:auto;}
+  .dnote{font-size:12px;color:var(--muted);margin-top:6px;border-top:1px solid var(--line);padding-top:9px;}
+  .dnote b{color:var(--accent);}
+  .mono{font-family:var(--mono);}
+
+  .steps{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin-top:18px;box-shadow:var(--shadow);}
+  .steps h3{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0 0 10px;}
+  .steps ol{margin:0;padding-left:20px;font-size:13.5px;color:var(--muted);}
+  .steps li{margin:5px 0;}
+  .steps b{color:var(--ink);}
+  footer{text-align:center;color:var(--muted);font-size:12px;margin-top:24px;}
+  .locknote{font-size:12px;color:var(--muted);text-align:center;margin-top:12px;}
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="badge">🔐</div>
+    <h1>Secure<span>Share</span></h1>
+    <p class="sub">Lock a message with a secret key. Only someone who enters the <b>exact same key</b> can unlock it — otherwise it stays locked.</p>
+  </header>
+
+  <div class="tabs">
+    <button class="tab active" id="tabLock" onclick="switchTab('lock')">🔒 Lock a message</button>
+    <button class="tab" id="tabUnlock" onclick="switchTab('unlock')">🔓 Unlock a message</button>
+  </div>
+
+  <!-- LOCK -->
+  <div class="card" id="lockCard">
+    <div class="field">
+      <label for="plain">Your secret message</label>
+      <textarea id="plain" rows="3" placeholder="Type the message you want to protect…"></textarea>
+    </div>
+    <div class="field">
+      <label for="lockKey">Secret key</label>
+      <div class="keyrow">
+        <input id="lockKey" type="password" placeholder="Choose a secret key…">
+        <button class="eye" onclick="toggleEye('lockKey',this)">👁</button>
+      </div>
+      <div class="hint">Share this key with the other person <b>privately</b> (not in the same message as the code).</div>
+    </div>
+    <button class="btn" onclick="lockMessage()">🔒 Lock Message</button>
+    <div class="result code" id="lockResult">
+      <div class="rlabel">🔑 Locked code — share this</div>
+      <div class="codebox" id="lockCode"></div>
+      <button class="copybtn" onclick="copyCode()">📋 Copy code</button>
+    </div>
+    <div class="locknote" id="locknote">Send this code to your friend, and tell them the secret key separately.</div>
+
+    <!-- Under the hood: collapsible panel for showing the crypto during a demo -->
+    <button class="toggle" id="detailsToggle" onclick="toggleDetails()">🔬 Show what's inside ▾</button>
+    <div class="details" id="lockDetails">
+      <div class="dhead">🔬 Under the hood <span>(what's happening inside)</span></div>
+      <div class="drow"><span class="dk">Plain text</span><span class="dv" id="dPlain"></span></div>
+      <div class="drow"><span class="dk">Cipher text (hex)</span><span class="dv mono" id="dHex"></span></div>
+      <div class="drow"><span class="dk">Cipher text (8-bit binary)</span><span class="dv mono" id="dBin"></span></div>
+      <div class="dnote">🔁 Tap <b>Lock</b> again on the same message — the binary &amp; code change <b>every time</b>. That's a random salt + IV, so identical messages never produce identical ciphertext.</div>
+    </div>
+  </div>
+
+  <!-- UNLOCK -->
+  <div class="card hidden" id="unlockCard">
+    <div class="field">
+      <label for="cipher">Paste the locked code</label>
+      <textarea id="cipher" rows="3" placeholder="Paste the code you received…"></textarea>
+    </div>
+    <div class="field">
+      <label for="unlockKey">Secret key</label>
+      <div class="keyrow">
+        <input id="unlockKey" type="password" placeholder="Enter the secret key…">
+        <button class="eye" onclick="toggleEye('unlockKey',this)">👁</button>
+      </div>
+    </div>
+    <button class="btn" onclick="unlockMessage()">🔓 Unlock Message</button>
+    <div class="result" id="unlockResult">
+      <div class="rlabel" id="unlockLabel"></div>
+      <div class="msg" id="unlockMsg"></div>
+    </div>
+  </div>
+
+  <div class="steps">
+    <h3>How it works</h3>
+    <ol>
+      <li><b>You</b> type a message and a secret key, then tap <b>Lock</b> → you get a scrambled code.</li>
+      <li>Send the <b>code</b> to your friend, and tell them the <b>secret key</b> separately.</li>
+      <li>Your friend pastes the code, enters the <b>same key</b>, and taps <b>Unlock</b> → they see the message.</li>
+      <li>Wrong key → it <b>won't open</b>. The message is protected with AES-256 encryption.</li>
+    </ol>
+  </div>
+
+  <footer>Real AES-256-GCM encryption, running only in your browser · nothing is uploaded anywhere.<br>Built by <b>Vinay Kumar Reddy Palavalli</b></footer>
+</div>
+
+<script>
+const el = id => document.getElementById(id);
+
+function switchTab(which){
+  const lock = which === 'lock';
+  el('tabLock').classList.toggle('active', lock);
+  el('tabUnlock').classList.toggle('active', !lock);
+  el('lockCard').classList.toggle('hidden', !lock);
+  el('unlockCard').classList.toggle('hidden', lock);
+}
+function toggleEye(id, btn){
+  const inp = el(id);
+  inp.type = inp.type === 'password' ? 'text' : 'password';
+  btn.style.color = inp.type === 'text' ? 'var(--accent)' : 'var(--muted)';
+}
+
+// ---- real crypto: PBKDF2 key derivation + AES-256-GCM ----
+async function deriveKey(passphrase, salt){
+  const km = await crypto.subtle.importKey('raw', new TextEncoder().encode(passphrase),
+    'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey(
+    {name:'PBKDF2', salt, iterations:100000, hash:'SHA-256'},
+    km, {name:'AES-GCM', length:256}, false, ['encrypt','decrypt']);
+}
+function b64encode(bytes){ return btoa(String.fromCharCode(...bytes)); }
+function b64decode(str){ return Uint8Array.from(atob(str.trim()), c => c.charCodeAt(0)); }
+
+async function lockMessage(){
+  const msg = el('plain').value;
+  const pass = el('lockKey').value;
+  if(!msg){ alert('Type a message first.'); return; }
+  if(!pass){ alert('Choose a secret key.'); return; }
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const key = await deriveKey(pass, salt);
+  const ct = await crypto.subtle.encrypt({name:'AES-GCM', iv}, key, new TextEncoder().encode(msg));
+  const ctBytes = new Uint8Array(ct);
+  const blob = new Uint8Array([...salt, ...iv, ...ctBytes]);
+  el('lockCode').textContent = b64encode(blob);
+  el('lockResult').classList.add('show');
+
+  // "Under the hood" panel: plaintext -> ciphertext hex -> 8-bit binary
+  el('dPlain').textContent = msg;
+  el('dHex').textContent = [...ctBytes].map(b => b.toString(16).padStart(2,'0')).join(' ');
+  el('dBin').textContent = [...ctBytes].map(b => b.toString(2).padStart(8,'0')).join(' ');
+  // reveal the toggle button, but keep the panel collapsed until they choose to show it
+  el('detailsToggle').classList.add('show');
+  el('lockDetails').classList.remove('show');
+  el('detailsToggle').textContent = '🔬 Show what\'s inside ▾';
+}
+
+function toggleDetails(){
+  const panel = el('lockDetails');
+  const open = panel.classList.toggle('show');
+  el('detailsToggle').textContent = open ? '🔬 Hide details ▴' : '🔬 Show what\'s inside ▾';
+}
+function copyCode(){
+  navigator.clipboard.writeText(el('lockCode').textContent).then(()=>{
+    const b = event.target; const t = b.textContent; b.textContent = '✓ Copied!';
+    setTimeout(()=>b.textContent = t, 1500);
+  });
+}
+
+async function unlockMessage(){
+  const code = el('cipher').value;
+  const pass = el('unlockKey').value;
+  const res = el('unlockResult');
+  if(!code || !pass){ alert('Paste the code and enter the key.'); return; }
+  try{
+    const blob = b64decode(code);
+    const salt = blob.slice(0,16), iv = blob.slice(16,28), ct = blob.slice(28);
+    const key = await deriveKey(pass, salt);
+    const pt = await crypto.subtle.decrypt({name:'AES-GCM', iv}, key, ct);
+    res.className = 'result ok show';
+    el('unlockLabel').innerHTML = '✓ Unlocked';
+    el('unlockMsg').textContent = new TextDecoder().decode(pt);
+  }catch(e){
+    res.className = 'result err show';
+    el('unlockLabel').innerHTML = '✕ Could not unlock';
+    el('unlockMsg').textContent = 'Wrong key — the message stays locked. Check the key and the code and try again.';
+  }
+}
+</script>

@@ -1,0 +1,218 @@
+<!--
+  SecureIoT - interactive web demo of the Lightweight ECDH IoT Authentication
+  protocol. The UI calls the Flask API (app.py), which runs the same ECDH crypto
+  as the original MATLAB project. Self-contained (all CSS/JS inline).
+-->
+<title>SecureIoT — Lightweight ECDH IoT Authentication</title>
+<style>
+  :root{
+    --bg:#0a0f14; --panel:#111a22; --panel2:#0d151c; --line:#1e2c38;
+    --ink:#e6f0f6; --muted:#7d95a6; --faint:#4f6675;
+    --cyan:#22d3ee; --green:#34d399; --amber:#fbbf24; --red:#f87171; --violet:#a78bfa;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:radial-gradient(1200px 600px at 70% -10%,#12212c,transparent),var(--bg);
+    color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;line-height:1.5;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1000px;margin:0 auto;padding:26px 20px 60px;}
+  .mono{font-family:var(--mono);}
+  button{font-family:inherit;cursor:pointer;border:none;}
+  a{color:var(--cyan);}
+
+  header{text-align:center;margin-bottom:8px;}
+  .lock{font-size:34px;}
+  h1{font-size:23px;margin:6px 0 4px;font-weight:800;letter-spacing:-.01em;}
+  h1 span{color:var(--cyan);}
+  .sub{color:var(--muted);font-size:13.5px;max-width:60ch;margin:0 auto;}
+  .tag{display:inline-block;margin-top:10px;font-size:11px;font-weight:700;color:var(--green);
+    background:rgba(52,211,153,.1);border:1px solid rgba(52,211,153,.25);padding:4px 11px;border-radius:99px;}
+
+  /* device <-> server diagram */
+  .diagram{display:flex;align-items:center;justify-content:center;gap:0;margin:26px 0 8px;}
+  .node{background:var(--panel);border:1.5px solid var(--line);border-radius:16px;padding:18px 22px;text-align:center;width:150px;transition:.3s;}
+  .node.lit{border-color:var(--green);box-shadow:0 0 24px rgba(52,211,153,.25);}
+  .node .ic{font-size:34px;}
+  .node .nm{font-weight:800;font-size:14px;margin-top:6px;}
+  .node .k{font-family:var(--mono);font-size:10.5px;color:var(--muted);margin-top:4px;word-break:break-all;min-height:24px;}
+  .link{flex:1;max-width:180px;height:3px;background:var(--line);position:relative;margin:0 4px;border-radius:2px;overflow:hidden;}
+  .link .pulse{position:absolute;top:0;left:-30%;width:30%;height:100%;background:linear-gradient(90deg,transparent,var(--cyan),transparent);}
+  .link.active .pulse{animation:flow 1s linear infinite;}
+  @keyframes flow{to{left:100%;}}
+  .link .lbl{position:absolute;top:-20px;left:50%;transform:translateX(-50%);font-size:10px;color:var(--muted);white-space:nowrap;font-family:var(--mono);}
+
+  .actions{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin:20px 0 6px;}
+  .btn{font-weight:700;font-size:14px;padding:11px 18px;border-radius:11px;transition:.15s;display:inline-flex;align-items:center;gap:8px;}
+  .btn-primary{background:var(--cyan);color:#04222b;}
+  .btn-primary:hover{filter:brightness(1.1);}
+  .btn-ghost{background:transparent;color:var(--ink);border:1px solid var(--line);}
+  .btn-ghost:hover{border-color:var(--cyan);}
+  .btn-danger{background:transparent;color:var(--red);border:1px solid rgba(248,113,113,.4);}
+  .btn-danger:hover{background:rgba(248,113,113,.1);}
+  .btn:disabled{opacity:.5;cursor:not-allowed;}
+
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;margin-top:16px;}
+  .card h2{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 14px;font-weight:700;}
+
+  /* handshake steps */
+  .step{display:flex;gap:12px;padding:9px 0;border-bottom:1px solid var(--panel2);opacity:.35;transition:.35s;}
+  .step.show{opacity:1;}
+  .step .dot{width:22px;height:22px;border-radius:50%;flex-shrink:0;display:grid;place-items:center;font-size:12px;font-weight:900;background:var(--line);color:var(--muted);}
+  .step.ok .dot{background:var(--green);color:#04241a;}
+  .step.bad .dot{background:var(--red);color:#2a0d0d;}
+  .step .t1{font-weight:700;font-size:13.5px;}
+  .step .t2{font-family:var(--mono);font-size:11.5px;color:var(--muted);word-break:break-all;margin-top:2px;}
+
+  .field{display:flex;gap:8px;margin-bottom:12px;}
+  .field input{flex:1;min-width:0;font:inherit;font-size:14px;background:var(--panel2);border:1px solid var(--line);color:var(--ink);border-radius:10px;padding:11px 13px;}
+  .field input:focus{outline:2px solid var(--cyan);}
+  .kv{display:flex;gap:10px;padding:6px 0;font-size:13px;border-bottom:1px solid var(--panel2);}
+  .kv .k{color:var(--muted);width:130px;flex-shrink:0;}
+  .kv .v{font-family:var(--mono);word-break:break-all;flex:1;}
+  .v.ok{color:var(--green);} .v.bad{color:var(--red);} .v.cy{color:var(--cyan);}
+  .pill{display:inline-block;font-size:11px;font-weight:800;padding:3px 10px;border-radius:99px;}
+  .pill.ok{background:rgba(52,211,153,.14);color:var(--green);}
+  .pill.bad{background:rgba(248,113,113,.14);color:var(--red);}
+
+  /* console */
+  .console{background:#05090d;border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin-top:16px;}
+  .console .h{display:flex;align-items:center;gap:9px;color:var(--faint);font-size:11px;letter-spacing:.06em;text-transform:uppercase;margin-bottom:9px;}
+  .dot3{display:flex;gap:5px;} .dot3 i{width:9px;height:9px;border-radius:50%;}
+  pre.log{margin:0;font-family:var(--mono);font-size:12px;line-height:1.6;color:#bfe6d6;white-space:pre-wrap;word-break:break-word;max-height:220px;overflow:auto;}
+  .log .k{color:#7fdcc0;} .log .s{color:#e8d9a0;} .log .n{color:#8fd0ff;}
+  footer{text-align:center;color:var(--faint);font-size:12px;margin-top:26px;}
+  footer b{color:var(--muted);}
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="lock">🔐</div>
+    <h1>Secure<span>IoT</span> — Lightweight ECDH Device Authentication</h1>
+    <p class="sub">An interactive demo of a lightweight cryptographic protocol that authenticates
+      IoT devices using Elliptic-Curve Diffie-Hellman (ECDH) key exchange — efficient enough for
+      resource-constrained devices.</p>
+    <div class="tag">● Live crypto running on the server (mirrors the MATLAB project)</div>
+  </header>
+
+  <!-- diagram -->
+  <div class="diagram">
+    <div class="node" id="nDevice"><div class="ic">📟</div><div class="nm">IoT Device</div><div class="k" id="kDevice">no key yet</div></div>
+    <div class="link" id="link"><span class="lbl">ECDH key exchange</span><span class="pulse"></span></div>
+    <div class="node" id="nServer"><div class="ic">🖥️</div><div class="nm">Server</div><div class="k" id="kServer">no key yet</div></div>
+  </div>
+
+  <div class="actions">
+    <button class="btn btn-primary" id="authBtn" onclick="authenticate()">▶ Authenticate Device</button>
+    <button class="btn btn-danger" onclick="wrongKey()">⚠ Simulate Attack (wrong key)</button>
+  </div>
+
+  <!-- handshake -->
+  <div class="card">
+    <h2>Authentication Handshake</h2>
+    <div id="steps">
+      <div class="step" id="s0"><span class="dot">1</span><div><div class="t1">Generate ECDH key pairs (device &amp; server)</div><div class="t2">click “Authenticate Device” to begin</div></div></div>
+      <div class="step" id="s1"><span class="dot">2</span><div><div class="t1">Exchange public keys</div><div class="t2"></div></div></div>
+      <div class="step" id="s2"><span class="dot">3</span><div><div class="t1">Both derive the shared secret independently</div><div class="t2"></div></div></div>
+      <div class="step" id="s3"><span class="dot">4</span><div><div class="t1">Authentication result</div><div class="t2"></div></div></div>
+    </div>
+  </div>
+
+  <!-- encrypt -->
+  <div class="card">
+    <h2>Encrypt Sensor Data (with the shared secret)</h2>
+    <div class="field">
+      <input id="msg" type="text" value="temperature=24.7C; humidity=60%" placeholder="Enter a sensor reading…">
+      <button class="btn btn-ghost" onclick="encryptData()">🔒 Encrypt &amp; Decrypt</button>
+    </div>
+    <div id="encOut" style="display:none;">
+      <div class="kv"><span class="k">Plaintext</span><span class="v" id="oPlain"></span></div>
+      <div class="kv"><span class="k">Shared secret</span><span class="v cy" id="oSecret"></span></div>
+      <div class="kv"><span class="k">Ciphertext (hex)</span><span class="v" id="oHex"></span></div>
+      <div class="kv"><span class="k">Ciphertext (binary)</span><span class="v" id="oBin"></span></div>
+      <div class="kv"><span class="k">Decrypted</span><span class="v ok" id="oDec"></span></div>
+      <div class="kv"><span class="k">Integrity</span><span class="v" id="oInt"></span></div>
+    </div>
+  </div>
+
+  <!-- console -->
+  <div class="console">
+    <div class="h"><span class="dot3"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i></span> Live API response — ECDH backend</div>
+    <pre class="log" id="log">Ready. Run the authentication handshake above.</pre>
+  </div>
+
+  <footer>
+    Built by <b>Vinay Kumar Reddy Palavalli</b> · Web demo of the MATLAB capstone project ·
+    <a href="https://github.com/VinayReddi7206" target="_blank" rel="noopener">github.com/VinayReddi7206</a>
+  </footer>
+</div>
+
+<script>
+const el = id => document.getElementById(id);
+function syntax(obj){
+  let s = JSON.stringify(obj, null, 2).replace(/&/g,"&amp;").replace(/</g,"&lt;");
+  s = s.replace(/"([^"]+)":/g,'<span class="k">"$1"</span>:');
+  s = s.replace(/: "([^"]*)"/g,': <span class="s">"$1"</span>');
+  s = s.replace(/: (\d+(\.\d+)?|true|false|null)/g,': <span class="n">$1</span>');
+  return s;
+}
+function logAPI(method, path, body){
+  el("log").innerHTML = `<span class="k">${method}</span> ${path}\n\n` + syntax(body);
+}
+async function post(path, payload){
+  const r = await fetch(path, {method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify(payload||{})});
+  return r.json();
+}
+function setStep(i, cls, detail){
+  const s = el("s"+i); s.classList.add("show");
+  if(cls){ s.classList.add(cls); s.querySelector(".dot").textContent = cls==="ok"?"✓":"✕"; }
+  if(detail!==undefined) s.querySelector(".t2").textContent = detail;
+}
+function resetSteps(){
+  for(let i=0;i<4;i++){ const s=el("s"+i); s.className="step"; s.querySelector(".dot").textContent=i+1; s.querySelector(".t2").textContent=""; }
+  el("nDevice").classList.remove("lit"); el("nServer").classList.remove("lit"); el("link").classList.remove("active");
+}
+const sleep = ms => new Promise(r=>setTimeout(r,ms));
+
+async function authenticate(){
+  el("authBtn").disabled = true;
+  resetSteps();
+  const d = await post("/api/authenticate");
+  logAPI("POST","/api/authenticate", d);
+  setStep(0,"ok","device priv/pub and server priv/pub generated");
+  el("kDevice").textContent = `pub (${d.iot_public.x}, ${d.iot_public.y})`;
+  el("kServer").textContent = `pub (${d.server_public.x}, ${d.server_public.y})`;
+  el("nDevice").classList.add("lit"); el("nServer").classList.add("lit");
+  await sleep(500);
+  el("link").classList.add("active");
+  setStep(1,"ok",`device pub (${d.iot_public.x},${d.iot_public.y}) ⇄ server pub (${d.server_public.x},${d.server_public.y})`);
+  await sleep(600);
+  setStep(2, d.secrets_match?"ok":"bad", `device secret = ${d.iot_secret}, server secret = ${d.server_secret}  (match: ${d.secrets_match})`);
+  await sleep(500);
+  setStep(3, d.success?"ok":"bad", d.success ? "✓ AUTHENTICATION SUCCESSFUL — secure channel established" : "✕ authentication failed");
+  el("authBtn").disabled = false;
+}
+
+async function encryptData(){
+  const message = el("msg").value;
+  const d = await post("/api/encrypt", {message});
+  logAPI("POST","/api/encrypt", {plaintext:d.plaintext, shared_secret:d.shared_secret, ciphertext_hex:d.ciphertext_hex, decrypted:d.decrypted, integrity_ok:d.integrity_ok});
+  el("encOut").style.display="block";
+  el("oPlain").textContent = d.plaintext;
+  el("oSecret").textContent = d.shared_secret;
+  el("oHex").textContent = d.ciphertext_hex;
+  el("oBin").textContent = d.ciphertext_binary;
+  el("oDec").textContent = d.decrypted;
+  el("oInt").innerHTML = d.integrity_ok ? '<span class="pill ok">✓ verified</span>' : '<span class="pill bad">✕ mismatch</span>';
+}
+
+async function wrongKey(){
+  resetSteps();
+  const d = await post("/api/wrong-key");
+  logAPI("POST","/api/wrong-key", d);
+  setStep(0,"ok","keys generated");
+  setStep(1,"ok","attacker attempts the handshake with a wrong key");
+  setStep(2,"bad",`correct secret = ${d.correct_secret}, attacker secret = ${d.attacker_secret}  (match: ${d.authenticated})`);
+  setStep(3,"bad","✕ AUTHENTICATION FAILED — wrong key rejected (protects against impersonation / MITM)");
+  el("nDevice").classList.add("lit");
+}
+</script>
